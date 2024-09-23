@@ -545,88 +545,89 @@ class PuzzleApp:
     #   Write the values of fn, gn, and hn when searching for neighbors (successors) of the current state
     #   You may open the file in this function or create a helper function just for storing the values
     # -----------------------------------------------------------------------------------------
-    @profile
     def astar_search(self, heuristic):
-        
         start_time = time.time_ns()
+        
         # Initialize the frontier as a priority queue (min-heap)
         frontier = []
+        # Dictionary to keep track of the lowest fn values for states in the frontier
+        frontier_states = {}
         # Set to keep track of explored states
         explored = set()
         # Set to keep track of logged states for evaluation output
         logged_states = set()
+        
         # Start node is the initial node
         start_node = self.initial_node
-
-        # Calculate the heuristic value for the start node
-        hn = self.calculate_heuristic(start_node.state, heuristic)
-        start_node.hn = hn
-        start_node.gn = 0
-        start_node.fn = start_node.gn + start_node.hn
-
-        # Push the start node into the frontier with its fn value
+        start_node.gn = 0  # Cost from start
+        start_node.hn = self.calculate_heuristic(start_node.state, heuristic)  # Heuristic cost
+        start_node.fn = start_node.gn + start_node.hn  # Total cost
+        
+        # Push the start node into the frontier and track it in the dictionary
         heapq.heappush(frontier, (start_node.fn, start_node))
-        # Add the start node state to the explored set
-        explored.add(tuple(map(tuple, start_node.state)))
-        # Add the start node state to the logged states set
-        logged_states.add(tuple(map(tuple, start_node.state)))
-        # Initialize the explored count
+        frontier_states[tuple(map(tuple, start_node.state))] = start_node.fn
+        
+        # Explored count
         explored_count = 1
 
         # Open the evaluation output file
         with open("evaluation.out", "w") as f:
+            # Main search loop
             while frontier:
                 # Pop the node with the smallest fn value from the frontier
                 _, current_node = heapq.heappop(frontier)
-
-                # Log the current node's fn, gn, and hn values if not already logged
-                if tuple(map(tuple, current_node.state)) not in logged_states:
-                    f.write(f"f(n)={current_node.fn}, g(n)={current_node.gn}, h(n)={current_node.hn}\n")
-                    logged_states.add(tuple(map(tuple, current_node.state)))
+                current_state = tuple(map(tuple, current_node.state))
+                
+                if current_node != start_node:
+                    # Log the current node's fn, gn, and hn values if not already logged
+                    if current_state not in logged_states:
+                        f.write(f"f(n)={current_node.fn}, g(n)={current_node.gn}, h(n)={current_node.hn}\n")
+                        logged_states.add(current_state)
 
                 # Check if the current node is the goal state
                 if current_node.state == self.goal_tiles:
-                    # Get the solution path, directions, and path cost
+                    # Return the solution, directions, path cost, explored count, and time taken
                     solution, directions, path_cost = self.get_path(current_node)
                     end_time = time.time_ns()
                     time_taken = end_time - start_time
                     return solution, directions, path_cost, explored_count, time_taken
-
-                # Add the current node state to the explored set
-                explored.add(tuple(map(tuple, current_node.state)))
-                # Increment the explored count
+                
+                # Add the current node to the explored set
+                explored.add(current_state)
                 explored_count += 1
-
+                
                 # Get the neighbors of the current node
                 neighbors = self.get_neighbors(current_node)
-
                 for neighbor in neighbors:
-                    # Calculate the gn, hn, and fn values for the neighbor
-                    neighbor.gn = current_node.gn + 1
-                    neighbor.hn = self.calculate_heuristic(neighbor.state, heuristic)
-                    neighbor.fn = neighbor.gn + neighbor.hn
+                    # Convert the neighbor's state to a tuple
+                    neighbor_state = tuple(map(tuple, neighbor.state))
+                
+                    # Neighbor is already explored, skip
+                    if neighbor_state in explored:
+                        continue
+                    
+                    # Calculate gn, hn, and fn for the neighbor
+                    neighbor.gn = current_node.gn + 1  # Increment cost from start
+                    neighbor.hn = self.calculate_heuristic(neighbor.state, heuristic)  # Heuristic cost
+                    neighbor.fn = neighbor.gn + neighbor.hn  # Total cost
 
                     # Log the neighbor's fn, gn, and hn values if not already logged
-                    if tuple(map(tuple, neighbor.state)) not in logged_states:
+                    if neighbor_state not in logged_states:
                         f.write(f"f(n)={neighbor.fn}, g(n)={neighbor.gn}, h(n)={neighbor.hn}\n")
-                        logged_states.add(tuple(map(tuple, neighbor.state)))
-
-                    # Check if the neighbor state is not in explored and not in the frontier
-                    if tuple(map(tuple, neighbor.state)) not in explored and not any(node.state == neighbor.state for _, node in frontier):
+                        logged_states.add(neighbor_state)
+                    
+                    # If the neighbor is not in the frontier or has a lower fn value (better path)
+                    if (neighbor_state not in frontier_states) or (neighbor.fn < frontier_states[neighbor_state]):
+                        # Push the neighbor to the frontier
                         heapq.heappush(frontier, (neighbor.fn, neighbor))
-                    else:
-                        # Update the frontier if a better path is found
-                        for i, (fn, node) in enumerate(frontier):
-                            if node.state == neighbor.state and neighbor.fn < fn:
-                                frontier.pop(i)
-                                heapq.heappush(frontier, (neighbor.fn, neighbor))
-                                f.write(f"f(n)={neighbor.fn}, g(n)={neighbor.gn}, h(n)={neighbor.hn}\n")
-                                logged_states.add(tuple(map(tuple, neighbor.state)))
-                                break
-        # Return None if no solution is found
+                        # Update or add the neighbor's state and fn value in frontier_states
+                        frontier_states[neighbor_state] = neighbor.fn
+        
+        # If no solution is found, return failure values
         end_time = time.time_ns()
         time_taken = end_time - start_time
         return None, [], 0, explored_count, time_taken
+
     # -----------------------------------------------------------------------------------------
     # Given a type of heuristic, get the hn
     # @params
